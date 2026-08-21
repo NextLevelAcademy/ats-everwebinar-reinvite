@@ -1,0 +1,9 @@
+{
+     "name": "ats-everwebinar-reinvite",
+     "account_id": "97958db8bde10a7cf2a95fa2d056a78d",
+     "compatibility_date": "2026-07-28",
+     "assets": {
+       "directory": "dist/public",
+       "not_found_handling": "single-page-application"
+     }
+   }
