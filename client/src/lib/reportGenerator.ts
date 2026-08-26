@@ -83,25 +83,20 @@ function buildFullPhone(cc: string, local: string): string {
 
 function detectCountryFromCc(cc: string): CountryGroup {
   const c = digits(cc);
-  if (!c) return "NA";
   if (c === "65") return "SG";
   if (c === "60") return "MY";
-  if (c === "1") return "USA";
-  if (c === "852") return "HK";
-  // Any other valid cc → OTHERS
+  // Any other recognizable country code (USA, HK, etc.) → OTHERS
   return "OTHERS";
 }
 
 /**
  * Detect country for a row that has only a raw phone (no cc field).
- * If cc could not be determined AND phone has any digits → INVALID.
- * If both empty → NA.
+ * No resolvable country code at all (whether or not a local number was
+ * entered) → INVALID.
  */
 function detectCountry(cc: string, local: string): CountryGroup {
   const c = digits(cc);
-  const l = digits(local);
-  if (!c && !l) return "NA";
-  if (!c && l) return "INVALID";
+  if (!c) return "INVALID";
   return detectCountryFromCc(c);
 }
 
@@ -215,6 +210,9 @@ interface TCRow {
   pricingOption: string;
   packageName: string;
   orderDate: string;
+  // Actual payment gateway/processor (e.g. "Stripe", "PayPal"), if the
+  // ThriveCart export includes such a column. Empty string if not found.
+  paymentMethod: string;
 }
 
 function parseTCRows(rows: Record<string, any>[]): TCRow[] {
@@ -261,6 +259,16 @@ function parseTCRows(rows: Record<string, any>[]): TCRow[] {
           "Item Name",
         ]),
         orderDate: getVal(r, ["order_date", "Order Date", "date"]),
+        paymentMethod: getVal(r, [
+          "payment processor",
+          "payment_processor",
+          "payment method",
+          "payment_method",
+          "payment gateway",
+          "payment_gateway",
+          "gateway",
+          "processor",
+        ]),
       };
     })
     .filter((r) => r.email);
@@ -515,7 +523,7 @@ export async function generateReport(
         country: detectCountry(cc, local),
       };
     }
-    return { cc: "", local: "", fullPhone: "", country: "NA" };
+    return { cc: "", local: "", fullPhone: "", country: "INVALID" };
   }
 
   for (const r of tc) {
@@ -535,6 +543,7 @@ export async function generateReport(
       fullPhone: resolved.fullPhone,
       country: resolved.country,
       source: "ThriveCart",
+      paymentMethod: r.paymentMethod,
       pricingOption: r.packageName || r.pricingOption,
       intake: extractIntake(`${r.packageName || ""} ${r.pricingOption || ""} ${r.orderDate || ""}`),
       total: r.total,
@@ -578,6 +587,7 @@ export async function generateReport(
       fullPhone: resolved.fullPhone,
       country: resolved.country,
       source: "BT",
+      paymentMethod: "PayNow",
       pricingOption: "",
       intake: r.intake || "",
       total: r.price > 0 ? r.price : session.programPrice,
@@ -711,6 +721,10 @@ export async function generateReport(
   oldStudentsExcludedList.sort((a, b) =>
     (a.email || "").localeCompare(b.email || "")
   );
+  // Kept separately (full contact info, pre-exclusion) so the Keap Working
+  // export can still tag these attendees with the show-up tag, even though
+  // they're removed from the Opt-In / Show Up report tabs below.
+  const oldStudentsShowUpRows = showUpMerge.filter((r) => isOldStudent(r.email));
   const optInRowsFiltered = optInRows.filter((r) => !isOldStudent(r.email));
   const showUpMergeFiltered = showUpMerge.filter((r) => !isOldStudent(r.email));
   const oldStudentsExcludedCount =
@@ -727,11 +741,8 @@ export async function generateReport(
     const out: CountryBreakdown = {
       SG: 0,
       MY: 0,
-      USA: 0,
-      HK: 0,
       OTHERS: 0,
       INVALID: 0,
-      NA: 0,
     };
     for (const r of rows) out[r.country]++;
     return out;
@@ -744,8 +755,7 @@ export async function generateReport(
   // ===== Metrics =====
   const optInCount = optInRows.length;
   const invalidCount = optInByCountry.INVALID;
-  const naCount = optInByCountry.NA;
-  const optInWithoutInvalidCount = optInCount - invalidCount - naCount;
+  const optInWithoutInvalidCount = optInCount - invalidCount;
   const showUpCount = showUpMerge.length;
   const showUpPct = optInCount > 0 ? (showUpCount / optInCount) * 100 : 0;
   const attendanceAtPitchEntered = session.attendanceAtPitch ?? 0;
@@ -801,14 +811,14 @@ export async function generateReport(
   const fee = (session.programPrice || 0).toFixed(2);
   const studentList: StudentListRow[] = signUpRows.map((s) => {
     const isBT = s.source === "BT";
-    const gateway = isBT ? "Bank Transfer" : "stripe";
+    const gateway = isBT ? "Bank Transfer" : s.paymentMethod || "stripe";
     const ccLabel: CountryGroup = s.country;
     return {
       packageSold: s.pricingOption || "",
       name: s.fullName,
       email: s.email,
       mobile: s.fullPhone,
-      mobileCountryCode: ccLabel === "NA" ? "" : ccLabel,
+      mobileCountryCode: s.fullPhone ? ccLabel : "",
       expirationDate,
       monthsToExpire: mte,
       previewDate,
@@ -834,6 +844,7 @@ export async function generateReport(
     signUps: signUpRows,
     studentList,
     oldStudentsExcluded: oldStudentsExcludedList,
+    oldStudentsShowUpRows,
     generatedAt: new Date().toISOString(),
     nlow4ExcludedPhones,
     nlow4ExcludedEmails,
