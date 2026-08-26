@@ -71,7 +71,7 @@ export function downloadExcelReport(report: ReportData): void {
   }
 
   // Country tables in cols F (5) and G (6)
-  const buckets = ["SG", "MY", "USA", "HK", "OTHERS", "INVALID", "NA"] as const;
+  const buckets = ["SG", "MY", "OTHERS", "INVALID"] as const;
   // Opt In table — F1: "Opt In", F2: "Country" G2: "No.", F3..F9 buckets, F10 "Grand Total"
   setCell(0, 5, "Opt In");
   setCell(1, 5, "Country");
@@ -193,8 +193,8 @@ export function downloadExcelReport(report: ReportData): void {
       s.source === "BT"
         ? "PayNow"
         : s.source === "ThriveCart+BT"
-        ? "ThriveCart + PayNow"
-        : "ThriveCart",
+        ? `${s.paymentMethod || "ThriveCart"} + PayNow`
+        : s.paymentMethod || "ThriveCart",
       s.showedUp ? s.email : "",
     ]),
   ];
@@ -251,6 +251,23 @@ export function downloadExcelReport(report: ReportData): void {
       first: su.fullName,
       email: su.email,
       phone: su.fullPhone,
+      tags,
+    });
+    handledEmails.add(lc);
+  }
+
+  // Pass "old students who showed up": these are excluded from the Opt-In
+  // and Show Up report tabs (see reportGenerator.ts), but they did show up,
+  // so they still get tagged here, same as any other show-up.
+  for (const os of report.oldStudentsShowUpRows ?? []) {
+    const lc = os.email.toLowerCase();
+    if (handledEmails.has(lc)) continue;
+    const signed = signedUpEmails.has(lc);
+    const tags = signed ? `${g3},${g4}` : g3;
+    workings.push({
+      first: os.fullName,
+      email: os.email,
+      phone: os.fullPhone,
       tags,
     });
     handledEmails.add(lc);

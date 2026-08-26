@@ -35,11 +35,8 @@ export type SendBroadcastRequest = z.infer<typeof sendBroadcastSchema>;
 export type CountryGroup =
   | "SG"
   | "MY"
-  | "USA"
-  | "HK"
   | "OTHERS"
-  | "INVALID"
-  | "NA";
+  | "INVALID";
 
 export interface VWDateEntry {
   label: string; // e.g. "May"
@@ -120,6 +117,9 @@ export interface SignUpRow {
   fullPhone: string;
   country: CountryGroup;
   source: "ThriveCart" | "BT" | "ThriveCart+BT";
+  // Actual payment gateway/processor read from the ThriveCart CSV (e.g.
+  // "Stripe", "PayPal"), when that column is present. Empty if not found.
+  paymentMethod: string;
   pricingOption: string;
   intake: string; // "May", "June", or "" — derived from pricingOption / orderDate
   total: number;
@@ -157,11 +157,8 @@ export interface OldStudentExclusionRow {
 export interface CountryBreakdown {
   SG: number;
   MY: number;
-  USA: number;
-  HK: number;
   OTHERS: number;
   INVALID: number;
-  NA: number;
 }
 
 export interface ReportData {
@@ -176,6 +173,10 @@ export interface ReportData {
   signUps: SignUpRow[];
   studentList: StudentListRow[];
   oldStudentsExcluded: OldStudentExclusionRow[];
+  // Old students who showed up, kept separately (with full contact info) so
+  // the Keap Working export can still tag them with the show-up tag — even
+  // though they remain excluded from the Opt-In / Show Up report tabs.
+  oldStudentsShowUpRows: ShowUpMergeRow[];
   generatedAt: string;
   // Tag 4 List exclusion (ATS4) — contacts in the uploaded Tag 4 CSV are
   // filtered out of the No Show Up broadcast. Match by normalized phone

@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ChartColumn,
   CheckCircle,
   Download,
   FileText,
   Moon,
+  Pencil,
   RefreshCw,
   Send,
   Sun,
@@ -641,11 +642,8 @@ function VWStatCard({
 const BUCKETS: Array<keyof CountryBreakdown> = [
   "SG",
   "MY",
-  "USA",
-  "HK",
   "OTHERS",
   "INVALID",
-  "NA",
 ];
 
 function CountryTable({
@@ -716,7 +714,13 @@ function SourcePill({ source }: { source: ShowUpMergeRow["source"] }) {
   );
 }
 
-function SignUpSourcePill({ source }: { source: SignUpRow["source"] }) {
+function SignUpSourcePill({
+  source,
+  paymentMethod,
+}: {
+  source: SignUpRow["source"];
+  paymentMethod?: string;
+}) {
   if (source === "BT")
     return (
       <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400">
@@ -726,12 +730,12 @@ function SignUpSourcePill({ source }: { source: SignUpRow["source"] }) {
   if (source === "ThriveCart+BT")
     return (
       <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-400">
-        ThriveCart + PayNow
+        {paymentMethod || "ThriveCart"} + PayNow
       </span>
     );
   return (
     <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-400">
-      ThriveCart
+      {paymentMethod || "ThriveCart"}
     </span>
   );
 }
@@ -873,7 +877,7 @@ function SignUpTable({
                   <CountryPill value={r.country} />
                 </td>
                 <td className="px-4 py-2">
-                  <SignUpSourcePill source={r.source} />
+                  <SignUpSourcePill source={r.source} paymentMethod={r.paymentMethod} />
                 </td>
                 <td className="px-4 py-2">{r.showedUp && <YesPill />}</td>
               </tr>
@@ -1082,12 +1086,18 @@ function WatiSection({
 function ReportView({
   report,
   broadcasts,
+  session,
+  onSessionChange,
+  regenerating,
 }: {
   report: ReportData;
   broadcasts: ReturnType<typeof buildBroadcasts>;
+  session: SessionDetails;
+  onSessionChange: (s: SessionDetails) => void;
+  regenerating: boolean;
 }) {
+  const [editingSession, setEditingSession] = useState(false);
   const m = report.metrics;
-  const session = report.sessionDetails;
 
   const revenue = m.revenueTotal.toLocaleString("en-US", {
     minimumFractionDigits: 2,
@@ -1111,10 +1121,36 @@ function ReportView({
   return (
     <main className="max-w-6xl mx-auto px-6 py-8">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold">ATS Everwebinar Reinvite Report</h1>
-        <p className="text-base text-muted-foreground">
-          by {session.speaker || "—"}
-        </p>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-bold">ATS Everwebinar Reinvite Report</h1>
+            <p className="text-base text-muted-foreground">
+              by {session.speaker || "—"}
+              {regenerating && (
+                <span className="ml-2 text-xs text-primary font-medium">
+                  Recalculating…
+                </span>
+              )}
+            </p>
+          </div>
+          <button
+            onClick={() => setEditingSession((v) => !v)}
+            data-testid="button-edit-session"
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border hover:bg-muted text-sm font-medium transition-colors flex-shrink-0"
+          >
+            <Pencil className="w-4 h-4" />
+            {editingSession ? "Done Editing" : "Edit Details"}
+          </button>
+        </div>
+        {editingSession && (
+          <div className="mt-3">
+            <SessionDetailsCard session={session} setSession={onSessionChange} />
+            <p className="text-xs text-muted-foreground mt-2">
+              Changes recompute the report from the files you already
+              uploaded — no need to re-upload.
+            </p>
+          </div>
+        )}
         <div className="mt-3 text-sm space-y-1">
           {m.oldStudentsExcludedCount > 0 && (
             <p className="text-amber-600 dark:text-amber-400">
@@ -1257,13 +1293,21 @@ export default function Home() {
   });
   const [report, setReport] = useState<ReportData | null>(null);
   const [generating, setGenerating] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
   const [isDark, setIsDark] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const root = document.documentElement;
     if (isDark) root.classList.add("dark");
     else root.classList.remove("dark");
   }, [isDark]);
+
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, []);
 
   const broadcasts = useMemo(
     () => (report ? buildBroadcasts(report) : null),
@@ -1304,6 +1348,37 @@ export default function Home() {
     } finally {
       setGenerating(false);
     }
+  }
+
+  // Edits made on the report page (VW dates, speaker, etc.) recompute the
+  // report from the already-uploaded files — no need to start over.
+  function handleSessionEdit(next: SessionDetails) {
+    setSession(next);
+    if (!report || !everwebinarFile || !tcFile) return;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    setRegenerating(true);
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const files: UploadedFiles = {
+          everwebinarFile,
+          thriveCartFile: tcFile,
+          oldStudentsFile,
+          bankTransferFile: btFile,
+          nlow4File,
+        };
+        const r = await generateReport(files, next);
+        setReport(r);
+      } catch (err: any) {
+        console.error(err);
+        toast({
+          title: "Failed to update report",
+          description: err?.message ?? "Unknown error",
+          variant: "destructive",
+        });
+      } finally {
+        setRegenerating(false);
+      }
+    }, 500);
   }
 
   function handleReset() {
@@ -1350,7 +1425,13 @@ export default function Home() {
         />
       )}
       {report && broadcasts && (
-        <ReportView report={report} broadcasts={broadcasts} />
+        <ReportView
+          report={report}
+          broadcasts={broadcasts}
+          session={session}
+          onSessionChange={handleSessionEdit}
+          regenerating={regenerating}
+        />
       )}
     </div>
   );
