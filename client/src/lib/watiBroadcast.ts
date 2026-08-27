@@ -16,6 +16,10 @@ export interface BroadcastDefinition {
   defaultBroadcastName: string;
   bannerPath?: string;
   bannerLabel?: string;
+  // When true, this list has no approved WATI template to send through yet —
+  // the panel only offers the CSV download (for manual WhatsApp follow-up),
+  // not the "Send via WATI" flow.
+  downloadOnly?: boolean;
 }
 
 export const BROADCASTS: Record<BroadcastType, BroadcastDefinition> = {
@@ -37,6 +41,15 @@ export const BROADCASTS: Record<BroadcastType, BroadcastDefinition> = {
     templateName: "ats_noshow_v1",
     defaultBroadcastName: "ATS_NoShow_Followup",
   },
+  sales_follow_up: {
+    type: "sales_follow_up",
+    label: "Sales Follow Up",
+    description:
+      "Attendees who showed up but did NOT sign up — download and follow up on WhatsApp.",
+    templateName: "",
+    defaultBroadcastName: "ATS_Sales_Followup",
+    downloadOnly: true,
+  },
 };
 
 export interface BroadcastBuild {
@@ -52,6 +65,7 @@ export interface BroadcastBuild {
 export function buildBroadcasts(report: ReportData): {
   welcome: BroadcastBuild;
   no_show_up: BroadcastBuild;
+  sales_follow_up: BroadcastBuild;
 } {
   const allSignUps: SignUpRow[] = report.signUps;
   const participantEmails = new Set(
@@ -92,9 +106,23 @@ export function buildBroadcasts(report: ReportData): {
   );
   noShowUpBuild.nlow4ExcludedCount = nlow4ExcludedCount;
 
+  // Sales follow-up: attendees who showed up but did NOT sign up.
+  const showedUpNoSignUp = report.showUpMerge.filter((r) => !r.signedUp);
+  const salesFollowUpBuild = optInRowsToBroadcast(
+    "sales_follow_up",
+    showedUpNoSignUp.map((r) => ({
+      fullName: r.fullName || r.email || "Customer",
+      email: r.email,
+      countryCode: r.countryCode,
+      phoneNumber: r.phoneNumber,
+      fullPhone: r.fullPhone,
+    }))
+  );
+
   return {
     welcome: signUpsToBroadcast("welcome", allSignUps),
     no_show_up: noShowUpBuild,
+    sales_follow_up: salesFollowUpBuild,
   };
 }
 

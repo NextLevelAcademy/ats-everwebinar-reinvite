@@ -215,16 +215,23 @@ export function downloadExcelReport(report: ReportData): void {
   const g3 = hasDate ? `ATS3,ATS3-${ddmmyy}` : "ATS3";
   const g4 = hasDate ? `ATS4,ATS4-${ddmmyy}` : "ATS4";
 
+  const normPhone = (p: string) => (p || "").replace(/\D/g, "");
   const handledEmails = new Set<string>();
+  // Bank Transfer sign-ups often carry no email — dedupe/match those by
+  // phone instead, so they still get a Keap Working row and the right tags.
+  const handledPhones = new Set<string>();
+  const markHandled = (email: string, phone: string) => {
+    if (email) handledEmails.add(email.toLowerCase());
+    const p = normPhone(phone);
+    if (p) handledPhones.add(p);
+  };
   type WorkingRow = { first: string; email: string; phone: string; tags: string };
   const workings: WorkingRow[] = [];
-  const signedUpEmails = new Set(
-    report.signUps.map((s) => (s.email || "").toLowerCase()).filter(Boolean)
-  );
 
   // Pass 1: All show-ups (from Merge), in deterministic order.
   // First emit show-ups who signed up + were in opt-in (matches reference),
-  // then the remaining show-ups.
+  // then the remaining show-ups. `signedUp` already accounts for sign-ups
+  // matched by phone (e.g. Bank Transfer with no email) — see reportGenerator.ts.
   const signedShowups = report.showUpMerge.filter(
     (r) => r.signedUp && r.source === "Everwebinar"
   );
@@ -239,21 +246,20 @@ export function downloadExcelReport(report: ReportData): void {
       phone: su.fullPhone,
       tags: `${g3},${g4}`,
     });
-    handledEmails.add(su.email.toLowerCase());
+    markHandled(su.email, su.fullPhone);
   }
   for (const su of nonSignedShowups) {
     const lc = su.email.toLowerCase();
-    if (handledEmails.has(lc)) continue;
-    const signed = signedUpEmails.has(lc);
+    if (lc && handledEmails.has(lc)) continue;
     // ATS: no prefix2 tag, so show-up rules collapse to just g3 / g3+g4
-    const tags: string = signed ? `${g3},${g4}` : g3;
+    const tags: string = su.signedUp ? `${g3},${g4}` : g3;
     workings.push({
       first: su.fullName,
       email: su.email,
       phone: su.fullPhone,
       tags,
     });
-    handledEmails.add(lc);
+    markHandled(su.email, su.fullPhone);
   }
 
   // Pass "old students who showed up": these are excluded from the Opt-In
@@ -261,22 +267,30 @@ export function downloadExcelReport(report: ReportData): void {
   // so they still get tagged here, same as any other show-up.
   for (const os of report.oldStudentsShowUpRows ?? []) {
     const lc = os.email.toLowerCase();
-    if (handledEmails.has(lc)) continue;
-    const signed = signedUpEmails.has(lc);
-    const tags = signed ? `${g3},${g4}` : g3;
+    if (lc && handledEmails.has(lc)) continue;
+    const tags = os.signedUp ? `${g3},${g4}` : g3;
     workings.push({
       first: os.fullName,
       email: os.email,
       phone: os.fullPhone,
       tags,
     });
-    handledEmails.add(lc);
+    markHandled(os.email, os.fullPhone);
   }
 
-  // Pass 2: Sign-ups who did NOT show up.
+  // Pass 2: Sign-ups who did NOT show up. Keyed by email when present,
+  // falling back to phone (Bank Transfer sign-ups are often phone-only) so
+  // they still get a row instead of being silently dropped.
   for (const s of report.signUps) {
     const lc = (s.email || "").toLowerCase();
-    if (!lc || handledEmails.has(lc)) continue;
+    const phoneKey = normPhone(s.fullPhone);
+    if (lc) {
+      if (handledEmails.has(lc)) continue;
+    } else if (phoneKey) {
+      if (handledPhones.has(phoneKey)) continue;
+    } else {
+      continue; // nothing to key this contact on — can't tag or dedupe it
+    }
     // ATS: sign-up only → g4 regardless of opt-in status
     const tags = g4;
     workings.push({
@@ -285,7 +299,7 @@ export function downloadExcelReport(report: ReportData): void {
       phone: s.fullPhone,
       tags,
     });
-    handledEmails.add(lc);
+    markHandled(s.email, s.fullPhone);
   }
 
   const keapWorkingData = [

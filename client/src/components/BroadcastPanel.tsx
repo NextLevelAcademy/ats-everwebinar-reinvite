@@ -43,6 +43,7 @@ export function BroadcastPanel({ build }: { build: BroadcastBuild }) {
   >(null);
 
   const empty = build.contacts.length === 0;
+  const downloadOnly = !!build.definition.downloadOnly;
 
   // Banner path is shown as an informational preview only (see note below) —
   // it is NOT sent to the Worker. The confirmed Worker contract is exactly
@@ -104,15 +105,17 @@ export function BroadcastPanel({ build }: { build: BroadcastBuild }) {
       {/* Definition strip */}
       <div className="flex items-start justify-between gap-4 flex-wrap p-4 rounded-md bg-accent/50 border border-border">
         <div className="space-y-1">
-          <div className="text-sm">
-            <span className="text-muted-foreground">Template:</span>{" "}
-            <code
-              className="text-xs bg-background px-1.5 py-0.5 rounded border border-border"
-              data-testid="text-template-name"
-            >
-              {build.definition.templateName}
-            </code>
-          </div>
+          {!downloadOnly && (
+            <div className="text-sm">
+              <span className="text-muted-foreground">Template:</span>{" "}
+              <code
+                className="text-xs bg-background px-1.5 py-0.5 rounded border border-border"
+                data-testid="text-template-name"
+              >
+                {build.definition.templateName}
+              </code>
+            </div>
+          )}
           <div className="text-xs text-muted-foreground max-w-md">
             {build.definition.description}
           </div>
@@ -152,15 +155,17 @@ export function BroadcastPanel({ build }: { build: BroadcastBuild }) {
       )}
 
       {/* Broadcast name */}
-      <div className="space-y-1.5">
-        <Label htmlFor={`bcname-${build.type}`}>Broadcast name (visible in WATI)</Label>
-        <Input
-          id={`bcname-${build.type}`}
-          value={broadcastName}
-          onChange={(e) => setBroadcastName(e.target.value)}
-          data-testid={`input-broadcast-name-${build.type}`}
-        />
-      </div>
+      {!downloadOnly && (
+        <div className="space-y-1.5">
+          <Label htmlFor={`bcname-${build.type}`}>Broadcast name (visible in WATI)</Label>
+          <Input
+            id={`bcname-${build.type}`}
+            value={broadcastName}
+            onChange={(e) => setBroadcastName(e.target.value)}
+            data-testid={`input-broadcast-name-${build.type}`}
+          />
+        </div>
+      )}
 
       {/* Excluded warning */}
       {build.excluded.length > 0 && (
@@ -291,63 +296,67 @@ export function BroadcastPanel({ build }: { build: BroadcastBuild }) {
           <Download className="h-4 w-4 mr-2" />
           Download CSV
         </Button>
-        <Button
-          onClick={() => setConfirmOpen(true)}
-          disabled={empty || !broadcastName.trim()}
-          data-testid={`button-send-${build.type}`}
-        >
-          <Send className="h-4 w-4 mr-2" />
-          Send via WATI
-        </Button>
+        {!downloadOnly && (
+          <Button
+            onClick={() => setConfirmOpen(true)}
+            disabled={empty || !broadcastName.trim()}
+            data-testid={`button-send-${build.type}`}
+          >
+            <Send className="h-4 w-4 mr-2" />
+            Send via WATI
+          </Button>
+        )}
       </div>
 
       {/* Confirmation dialog */}
-      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <DialogContent data-testid="dialog-confirm">
-          <DialogHeader>
-            <DialogTitle>Send WATI broadcast?</DialogTitle>
-            <DialogDescription>
-              This will send the WhatsApp template to all listed recipients via
-              the WATI API. This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3 text-sm">
-            <Row label="Template" value={build.definition.templateName} mono />
-            <Row label="Broadcast name" value={broadcastName} />
-            <Row
-              label="Recipient count"
-              value={String(build.contacts.length)}
-            />
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setConfirmOpen(false)}
-              disabled={sending}
-              data-testid="button-cancel-send"
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={doSend}
-              disabled={sending}
-              data-testid="button-confirm-send"
-            >
-              {sending ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Sending...
-                </>
-              ) : (
-                <>
-                  <Send className="h-4 w-4 mr-2" />
-                  Yes, send now
-                </>
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {!downloadOnly && (
+        <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+          <DialogContent data-testid="dialog-confirm">
+            <DialogHeader>
+              <DialogTitle>Send WATI broadcast?</DialogTitle>
+              <DialogDescription>
+                This will send the WhatsApp template to all listed recipients via
+                the WATI API. This action cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3 text-sm">
+              <Row label="Template" value={build.definition.templateName} mono />
+              <Row label="Broadcast name" value={broadcastName} />
+              <Row
+                label="Recipient count"
+                value={String(build.contacts.length)}
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setConfirmOpen(false)}
+                disabled={sending}
+                data-testid="button-cancel-send"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={doSend}
+                disabled={sending}
+                data-testid="button-confirm-send"
+              >
+                {sending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Sending...
+                  </>
+                ) : (
+                  <>
+                    <Send className="h-4 w-4 mr-2" />
+                    Yes, send now
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

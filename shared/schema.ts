@@ -17,6 +17,7 @@ export type WatiContact = z.infer<typeof watiContactSchema>;
 export const broadcastTypeSchema = z.enum([
   "welcome",
   "no_show_up",
+  "sales_follow_up",
 ]);
 export type BroadcastType = z.infer<typeof broadcastTypeSchema>;
 
