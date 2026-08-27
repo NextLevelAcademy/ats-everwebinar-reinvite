@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ChartColumn,
   CheckCircle,
@@ -18,10 +18,12 @@ import {
   type UploadedFiles,
 } from "@/lib/reportGenerator";
 import { downloadExcelReport } from "@/lib/excelExport";
+import { deriveMetrics } from "@/lib/deriveMetrics";
 import { buildBroadcasts } from "@/lib/watiBroadcast";
 import { BroadcastPanel } from "@/components/BroadcastPanel";
 import type {
   CountryBreakdown,
+  OptInRow,
   ReportData,
   SessionDetails,
   ShowUpMergeRow,
@@ -684,63 +686,258 @@ function CountryTable({
   );
 }
 
-function CountryPill({ value }: { value: string }) {
-  return (
-    <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-muted text-foreground">
-      {value}
-    </span>
-  );
-}
+const COUNTRY_OPTIONS: (keyof CountryBreakdown)[] = [
+  "SG", "MY", "OTHERS", "INVALID",
+];
 
-function YesPill() {
-  return (
-    <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400">
-      ✓ Yes
-    </span>
-  );
-}
-
-function SourcePill({ source }: { source: ShowUpMergeRow["source"] }) {
-  const colorMap: Record<string, string> = {
-    Everwebinar:
-      "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400",
-  };
-  return (
-    <span
-      className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${colorMap[source]}`}
-    >
-      {source}
-    </span>
-  );
-}
-
-function SignUpSourcePill({
-  source,
-  paymentMethod,
+/** Inline-editable text cell — click to edit, blur/Enter to commit. */
+function EditableText({
+  value,
+  onCommit,
+  className,
+  placeholder,
+  testId,
 }: {
-  source: SignUpRow["source"];
-  paymentMethod?: string;
+  value: string;
+  onCommit: (next: string) => void;
+  className?: string;
+  placeholder?: string;
+  testId?: string;
 }) {
-  if (source === "BT")
-    return (
-      <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400">
-        PayNow
-      </span>
-    );
-  if (source === "ThriveCart+BT")
-    return (
-      <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-400">
-        {paymentMethod || "ThriveCart"} + PayNow
-      </span>
-    );
   return (
-    <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-400">
-      {paymentMethod || "ThriveCart"}
-    </span>
+    <input
+      type="text"
+      defaultValue={value}
+      key={value}
+      placeholder={placeholder}
+      data-testid={testId}
+      onBlur={(e) => {
+        if (e.target.value !== value) onCommit(e.target.value);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+      }}
+      className={[
+        "w-full bg-transparent border border-transparent rounded px-1 py-0.5 -mx-1 hover:border-border focus:border-primary focus:outline-none focus:bg-background transition-colors",
+        className || "",
+      ].join(" ")}
+    />
   );
 }
 
-function ShowUpMergeTable({ rows }: { rows: ShowUpMergeRow[] }) {
+/** Inline-editable number cell. */
+function EditableNumber({
+  value,
+  onCommit,
+  className,
+  testId,
+}: {
+  value: number;
+  onCommit: (next: number) => void;
+  className?: string;
+  testId?: string;
+}) {
+  return (
+    <input
+      type="number"
+      defaultValue={value}
+      key={value}
+      data-testid={testId}
+      onBlur={(e) => {
+        const next = Number(e.target.value) || 0;
+        if (next !== value) onCommit(next);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+      }}
+      className={[
+        "w-full bg-transparent border border-transparent rounded px-1 py-0.5 -mx-1 hover:border-border focus:border-primary focus:outline-none focus:bg-background transition-colors tabular-nums",
+        className || "",
+      ].join(" ")}
+    />
+  );
+}
+
+/** Inline country dropdown — the primary way to correct/override a valid vs. INVALID classification. */
+function CountrySelect({
+  value,
+  onCommit,
+  testId,
+}: {
+  value: string;
+  onCommit: (next: keyof CountryBreakdown) => void;
+  testId?: string;
+}) {
+  return (
+    <select
+      value={value}
+      data-testid={testId}
+      onChange={(e) => onCommit(e.target.value as keyof CountryBreakdown)}
+      className={[
+        "text-[10px] font-medium rounded px-1 py-0.5 border focus:outline-none focus:ring-1 focus:ring-primary/50",
+        value === "INVALID"
+          ? "bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-400 border-red-300 dark:border-red-800"
+          : "bg-muted text-foreground border-transparent hover:border-border",
+      ].join(" ")}
+    >
+      {COUNTRY_OPTIONS.map((c) => (
+        <option key={c} value={c}>
+          {c}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+/** Inline boolean toggle rendered as a small checkbox. */
+function EditableBool({
+  checked,
+  onCommit,
+  testId,
+}: {
+  checked: boolean;
+  onCommit: (next: boolean) => void;
+  testId?: string;
+}) {
+  return (
+    <input
+      type="checkbox"
+      checked={checked}
+      data-testid={testId}
+      onChange={(e) => onCommit(e.target.checked)}
+      className="w-3.5 h-3.5 accent-primary cursor-pointer"
+    />
+  );
+}
+
+function DeleteRowButton({ onClick, testId }: { onClick: () => void; testId?: string }) {
+  return (
+    <button
+      onClick={onClick}
+      data-testid={testId}
+      title="Remove row"
+      className="text-muted-foreground hover:text-red-600 dark:hover:text-red-400 transition-colors px-1"
+    >
+      ×
+    </button>
+  );
+}
+
+function OptInTable({
+  rows,
+  onUpdate,
+  onDelete,
+}: {
+  rows: OptInRow[];
+  onUpdate: (idx: number, patch: Partial<OptInRow>) => void;
+  onDelete: (idx: number) => void;
+}) {
+  const invalidCount = rows.filter((r) => r.country === "INVALID").length;
+  return (
+    <div className="bg-card border border-border rounded-xl overflow-hidden">
+      <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+        <h3 className="font-semibold text-sm text-foreground">
+          Opt In ({rows.length})
+        </h3>
+        <span className="text-xs text-muted-foreground">
+          {invalidCount > 0 && (
+            <span className="text-red-600 dark:text-red-400 font-medium">
+              {invalidCount} flagged invalid
+            </span>
+          )}{" "}
+          · click any cell to edit
+        </span>
+      </div>
+      <div className="overflow-x-auto max-h-[32rem] overflow-y-auto">
+        <table className="w-full text-xs">
+          <thead className="bg-muted/50 sticky top-0">
+            <tr>
+              <th className="px-4 py-2.5 text-left font-medium text-muted-foreground whitespace-nowrap">#</th>
+              <th className="px-4 py-2.5 text-left font-medium text-muted-foreground whitespace-nowrap">Name</th>
+              <th className="px-4 py-2.5 text-left font-medium text-muted-foreground whitespace-nowrap">Email</th>
+              <th className="px-4 py-2.5 text-left font-medium text-muted-foreground whitespace-nowrap">Phone</th>
+              <th className="px-4 py-2.5 text-left font-medium text-muted-foreground whitespace-nowrap">Country</th>
+              <th className="px-4 py-2.5 text-left font-medium text-muted-foreground whitespace-nowrap">Show Up</th>
+              <th className="px-4 py-2.5 text-left font-medium text-muted-foreground whitespace-nowrap">Sign Up</th>
+              <th className="px-4 py-2.5 text-left font-medium text-muted-foreground whitespace-nowrap"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr
+                key={`${r.email}-${i}`}
+                className={[
+                  "border-t border-border/50",
+                  r.country === "INVALID" ? "bg-red-50/50 dark:bg-red-950/10" : "",
+                ].join(" ")}
+                data-testid={`optin-row-${i}`}
+              >
+                <td className="px-4 py-1 text-muted-foreground">{i + 1}</td>
+                <td className="px-4 py-1 font-medium text-foreground">
+                  <EditableText
+                    value={r.fullName}
+                    onCommit={(v) => onUpdate(i, { fullName: v, firstName: v })}
+                    testId={`optin-name-${i}`}
+                  />
+                </td>
+                <td className="px-4 py-1 text-muted-foreground">
+                  <EditableText
+                    value={r.email}
+                    onCommit={(v) => onUpdate(i, { email: v })}
+                    testId={`optin-email-${i}`}
+                  />
+                </td>
+                <td className="px-4 py-1 tabular-nums">
+                  <EditableText
+                    value={r.fullPhone}
+                    onCommit={(v) => onUpdate(i, { fullPhone: v })}
+                    testId={`optin-phone-${i}`}
+                  />
+                </td>
+                <td className="px-4 py-1">
+                  <CountrySelect
+                    value={r.country}
+                    onCommit={(v) => onUpdate(i, { country: v as OptInRow["country"] })}
+                    testId={`optin-country-${i}`}
+                  />
+                </td>
+                <td className="px-4 py-1">
+                  <EditableBool
+                    checked={r.showedUp}
+                    onCommit={(v) => onUpdate(i, { showedUp: v })}
+                    testId={`optin-showedup-${i}`}
+                  />
+                </td>
+                <td className="px-4 py-1">
+                  <EditableBool
+                    checked={r.signedUp}
+                    onCommit={(v) => onUpdate(i, { signedUp: v })}
+                    testId={`optin-signedup-${i}`}
+                  />
+                </td>
+                <td className="px-4 py-1">
+                  <DeleteRowButton onClick={() => onDelete(i)} testId={`optin-delete-${i}`} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+const SHOW_UP_SOURCE_OPTIONS: ShowUpMergeRow["source"][] = ["Everwebinar"];
+
+function ShowUpMergeTable({
+  rows,
+  onUpdate,
+  onDelete,
+}: {
+  rows: ShowUpMergeRow[];
+  onUpdate: (idx: number, patch: Partial<ShowUpMergeRow>) => void;
+  onDelete: (idx: number) => void;
+}) {
   const signedUpCount = rows.filter((r) => r.signedUp).length;
   return (
     <div className="bg-card border border-border rounded-xl overflow-hidden">
@@ -749,12 +946,12 @@ function ShowUpMergeTable({ rows }: { rows: ShowUpMergeRow[] }) {
           Show Up Merge ({rows.length})
         </h3>
         <span className="text-xs text-primary font-medium">
-          {signedUpCount} signed up
+          {signedUpCount} signed up · click any cell to edit
         </span>
       </div>
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto max-h-[32rem] overflow-y-auto">
         <table className="w-full text-xs">
-          <thead className="bg-muted/50">
+          <thead className="bg-muted/50 sticky top-0">
             <tr>
               <th className="px-4 py-2.5 text-left font-medium text-muted-foreground whitespace-nowrap">
                 #
@@ -780,6 +977,7 @@ function ShowUpMergeTable({ rows }: { rows: ShowUpMergeRow[] }) {
               <th className="px-4 py-2.5 text-left font-medium text-muted-foreground whitespace-nowrap">
                 Signed Up
               </th>
+              <th className="px-4 py-2.5 text-left font-medium text-muted-foreground whitespace-nowrap"></th>
             </tr>
           </thead>
           <tbody>
@@ -790,21 +988,70 @@ function ShowUpMergeTable({ rows }: { rows: ShowUpMergeRow[] }) {
                   "border-t border-border/50",
                   r.signedUp ? "bg-green-50/50 dark:bg-green-950/10" : "",
                 ].join(" ")}
+                data-testid={`showup-row-${i}`}
               >
-                <td className="px-4 py-2 text-muted-foreground">{i + 1}</td>
-                <td className="px-4 py-2 font-medium text-foreground">
-                  {r.fullName}
+                <td className="px-4 py-1 text-muted-foreground">{i + 1}</td>
+                <td className="px-4 py-1 font-medium text-foreground">
+                  <EditableText
+                    value={r.fullName}
+                    onCommit={(v) => onUpdate(i, { fullName: v })}
+                    testId={`showup-name-${i}`}
+                  />
                 </td>
-                <td className="px-4 py-2 text-muted-foreground">{r.email}</td>
-                <td className="px-4 py-2 tabular-nums">{r.fullPhone}</td>
-                <td className="px-4 py-2">
-                  <CountryPill value={r.country} />
+                <td className="px-4 py-1 text-muted-foreground">
+                  <EditableText
+                    value={r.email}
+                    onCommit={(v) => onUpdate(i, { email: v })}
+                    testId={`showup-email-${i}`}
+                  />
                 </td>
-                <td className="px-4 py-2 tabular-nums">{r.durationMinutes}</td>
-                <td className="px-4 py-2">
-                  <SourcePill source={r.source} />
+                <td className="px-4 py-1 tabular-nums">
+                  <EditableText
+                    value={r.fullPhone}
+                    onCommit={(v) => onUpdate(i, { fullPhone: v })}
+                    testId={`showup-phone-${i}`}
+                  />
                 </td>
-                <td className="px-4 py-2">{r.signedUp && <YesPill />}</td>
+                <td className="px-4 py-1">
+                  <CountrySelect
+                    value={r.country}
+                    onCommit={(v) => onUpdate(i, { country: v as ShowUpMergeRow["country"] })}
+                    testId={`showup-country-${i}`}
+                  />
+                </td>
+                <td className="px-4 py-1 tabular-nums">
+                  <EditableNumber
+                    value={r.durationMinutes}
+                    onCommit={(v) => onUpdate(i, { durationMinutes: v })}
+                    testId={`showup-duration-${i}`}
+                  />
+                </td>
+                <td className="px-4 py-1">
+                  <select
+                    value={r.source}
+                    data-testid={`showup-source-${i}`}
+                    onChange={(e) =>
+                      onUpdate(i, { source: e.target.value as ShowUpMergeRow["source"] })
+                    }
+                    className="text-[10px] font-medium rounded px-1 py-0.5 border border-transparent bg-muted hover:border-border focus:outline-none focus:ring-1 focus:ring-primary/50"
+                  >
+                    {SHOW_UP_SOURCE_OPTIONS.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+                <td className="px-4 py-1">
+                  <EditableBool
+                    checked={r.signedUp}
+                    onCommit={(v) => onUpdate(i, { signedUp: v })}
+                    testId={`showup-signedup-${i}`}
+                  />
+                </td>
+                <td className="px-4 py-1">
+                  <DeleteRowButton onClick={() => onDelete(i)} testId={`showup-delete-${i}`} />
+                </td>
               </tr>
             ))}
           </tbody>
@@ -814,32 +1061,35 @@ function ShowUpMergeTable({ rows }: { rows: ShowUpMergeRow[] }) {
   );
 }
 
+const SIGN_UP_SOURCE_OPTIONS: SignUpRow["source"][] = [
+  "ThriveCart", "BT", "ThriveCart+BT",
+];
+
 function SignUpTable({
   rows,
   attendanceAtPitch,
   showUpCount,
+  onUpdate,
+  onDelete,
 }: {
   rows: SignUpRow[];
   attendanceAtPitch?: number | null;
   showUpCount?: number;
+  onUpdate: (idx: number, patch: Partial<SignUpRow>) => void;
+  onDelete: (idx: number) => void;
 }) {
   const signUps = rows.length;
-  const pitchPct =
-    attendanceAtPitch && attendanceAtPitch > 0
-      ? (signUps / attendanceAtPitch) * 100
-      : null;
-  const showUpPct =
-    showUpCount && showUpCount > 0 ? (signUps / showUpCount) * 100 : null;
   return (
     <div className="bg-card border border-border rounded-xl overflow-hidden">
-      <div className="px-5 py-4 border-b border-border">
+      <div className="px-5 py-4 border-b border-border flex items-center justify-between">
         <h3 className="font-semibold text-sm text-foreground">
           Sign Up ({signUps})
         </h3>
+        <span className="text-xs text-muted-foreground">click any cell to edit</span>
       </div>
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto max-h-[32rem] overflow-y-auto">
         <table className="w-full text-xs">
-          <thead className="bg-muted/50">
+          <thead className="bg-muted/50 sticky top-0">
             <tr>
               <th className="px-4 py-2.5 text-left font-medium text-muted-foreground whitespace-nowrap">
                 #
@@ -860,26 +1110,104 @@ function SignUpTable({
                 Source
               </th>
               <th className="px-4 py-2.5 text-left font-medium text-muted-foreground whitespace-nowrap">
+                Package
+              </th>
+              <th className="px-4 py-2.5 text-left font-medium text-muted-foreground whitespace-nowrap">
+                Intake
+              </th>
+              <th className="px-4 py-2.5 text-left font-medium text-muted-foreground whitespace-nowrap">
+                Amount
+              </th>
+              <th className="px-4 py-2.5 text-left font-medium text-muted-foreground whitespace-nowrap">
                 Show Up
               </th>
+              <th className="px-4 py-2.5 text-left font-medium text-muted-foreground whitespace-nowrap"></th>
             </tr>
           </thead>
           <tbody>
             {rows.map((r, i) => (
-              <tr key={`${r.email}-${i}`} className="border-t border-border/50">
-                <td className="px-4 py-2 text-muted-foreground">{i + 1}</td>
-                <td className="px-4 py-2 font-medium text-foreground">
-                  {r.fullName}
+              <tr key={`${r.email}-${i}`} className="border-t border-border/50" data-testid={`signup-row-${i}`}>
+                <td className="px-4 py-1 text-muted-foreground">{i + 1}</td>
+                <td className="px-4 py-1 font-medium text-foreground">
+                  <EditableText
+                    value={r.fullName}
+                    onCommit={(v) => onUpdate(i, { fullName: v })}
+                    testId={`signup-name-${i}`}
+                  />
                 </td>
-                <td className="px-4 py-2 text-muted-foreground">{r.email}</td>
-                <td className="px-4 py-2 tabular-nums">{r.fullPhone}</td>
-                <td className="px-4 py-2">
-                  <CountryPill value={r.country} />
+                <td className="px-4 py-1 text-muted-foreground">
+                  <EditableText
+                    value={r.email}
+                    onCommit={(v) => onUpdate(i, { email: v })}
+                    testId={`signup-email-${i}`}
+                  />
                 </td>
-                <td className="px-4 py-2">
-                  <SignUpSourcePill source={r.source} paymentMethod={r.paymentMethod} />
+                <td className="px-4 py-1 tabular-nums">
+                  <EditableText
+                    value={r.fullPhone}
+                    onCommit={(v) => onUpdate(i, { fullPhone: v })}
+                    testId={`signup-phone-${i}`}
+                  />
                 </td>
-                <td className="px-4 py-2">{r.showedUp && <YesPill />}</td>
+                <td className="px-4 py-1">
+                  <CountrySelect
+                    value={r.country}
+                    onCommit={(v) => onUpdate(i, { country: v as SignUpRow["country"] })}
+                    testId={`signup-country-${i}`}
+                  />
+                </td>
+                <td className="px-4 py-1">
+                  <select
+                    value={r.source}
+                    data-testid={`signup-source-${i}`}
+                    onChange={(e) =>
+                      onUpdate(i, { source: e.target.value as SignUpRow["source"] })
+                    }
+                    className="text-[10px] font-medium rounded px-1 py-0.5 border border-transparent bg-muted hover:border-border focus:outline-none focus:ring-1 focus:ring-primary/50"
+                  >
+                    {SIGN_UP_SOURCE_OPTIONS.map((s) => (
+                      <option key={s} value={s}>
+                        {s === "BT"
+                          ? "PayNow"
+                          : s === "ThriveCart+BT"
+                          ? `${r.paymentMethod || "ThriveCart"} + PayNow`
+                          : r.paymentMethod || "ThriveCart"}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+                <td className="px-4 py-1">
+                  <EditableText
+                    value={r.pricingOption}
+                    onCommit={(v) => onUpdate(i, { pricingOption: v })}
+                    testId={`signup-package-${i}`}
+                  />
+                </td>
+                <td className="px-4 py-1">
+                  <EditableText
+                    value={r.intake}
+                    onCommit={(v) => onUpdate(i, { intake: v })}
+                    placeholder="e.g. May"
+                    testId={`signup-intake-${i}`}
+                  />
+                </td>
+                <td className="px-4 py-1 tabular-nums">
+                  <EditableNumber
+                    value={r.total}
+                    onCommit={(v) => onUpdate(i, { total: v })}
+                    testId={`signup-total-${i}`}
+                  />
+                </td>
+                <td className="px-4 py-1">
+                  <EditableBool
+                    checked={r.showedUp}
+                    onCommit={(v) => onUpdate(i, { showedUp: v })}
+                    testId={`signup-showedup-${i}`}
+                  />
+                </td>
+                <td className="px-4 py-1">
+                  <DeleteRowButton onClick={() => onDelete(i)} testId={`signup-delete-${i}`} />
+                </td>
               </tr>
             ))}
           </tbody>
@@ -1086,18 +1414,69 @@ function WatiSection({
 function ReportView({
   report,
   broadcasts,
-  session,
-  onSessionChange,
-  regenerating,
+  onReportChange,
 }: {
   report: ReportData;
   broadcasts: ReturnType<typeof buildBroadcasts>;
-  session: SessionDetails;
-  onSessionChange: (s: SessionDetails) => void;
-  regenerating: boolean;
+  onReportChange: (next: ReportData) => void;
 }) {
-  const [editingSession, setEditingSession] = useState(false);
   const m = report.metrics;
+  const session = report.sessionDetails;
+  const [editingSession, setEditingSession] = useState(false);
+
+  // Recomputes every derived metric/breakdown/Student-List row from whatever
+  // Opt-In / Show Up / Sign Up rows and session details are current after an
+  // edit, so the on-screen numbers (and the Excel export, which reads this
+  // same state) always match what's in the tables.
+  function recompute(next: {
+    optIns?: OptInRow[];
+    showUpMerge?: ShowUpMergeRow[];
+    signUps?: SignUpRow[];
+    sessionDetails?: SessionDetails;
+  }) {
+    const optIns = next.optIns ?? report.optIns;
+    const showUpMerge = next.showUpMerge ?? report.showUpMerge;
+    const signUps = next.signUps ?? report.signUps;
+    const sessionDetails = next.sessionDetails ?? report.sessionDetails;
+    const derived = deriveMetrics(sessionDetails, optIns, showUpMerge, signUps, {
+      oldStudentsExcludedCount: m.oldStudentsExcludedCount,
+      oldStudentsShowUpOptInCount: m.oldStudentsShowUpOptInCount,
+      oldStudentsShowUpCount: m.oldStudentsShowUpCount,
+      showUpAddedToOptInCount: m.showUpAddedToOptInCount,
+    });
+    onReportChange({
+      ...report,
+      sessionDetails,
+      optIns,
+      showUpMerge,
+      signUps,
+      ...derived,
+    });
+  }
+
+  function updateOptIn(idx: number, patch: Partial<OptInRow>) {
+    recompute({ optIns: report.optIns.map((r, i) => (i === idx ? { ...r, ...patch } : r)) });
+  }
+  function deleteOptIn(idx: number) {
+    recompute({ optIns: report.optIns.filter((_, i) => i !== idx) });
+  }
+  function updateShowUp(idx: number, patch: Partial<ShowUpMergeRow>) {
+    recompute({
+      showUpMerge: report.showUpMerge.map((r, i) => (i === idx ? { ...r, ...patch } : r)),
+    });
+  }
+  function deleteShowUp(idx: number) {
+    recompute({ showUpMerge: report.showUpMerge.filter((_, i) => i !== idx) });
+  }
+  function updateSignUp(idx: number, patch: Partial<SignUpRow>) {
+    recompute({ signUps: report.signUps.map((r, i) => (i === idx ? { ...r, ...patch } : r)) });
+  }
+  function deleteSignUp(idx: number) {
+    recompute({ signUps: report.signUps.filter((_, i) => i !== idx) });
+  }
+  function updateSessionDetails(next: SessionDetails) {
+    recompute({ sessionDetails: next });
+  }
 
   const revenue = m.revenueTotal.toLocaleString("en-US", {
     minimumFractionDigits: 2,
@@ -1126,11 +1505,6 @@ function ReportView({
             <h1 className="text-2xl font-bold">ATS Everwebinar Reinvite Report</h1>
             <p className="text-base text-muted-foreground">
               by {session.speaker || "—"}
-              {regenerating && (
-                <span className="ml-2 text-xs text-primary font-medium">
-                  Recalculating…
-                </span>
-              )}
             </p>
           </div>
           <button
@@ -1144,11 +1518,7 @@ function ReportView({
         </div>
         {editingSession && (
           <div className="mt-3">
-            <SessionDetailsCard session={session} setSession={onSessionChange} />
-            <p className="text-xs text-muted-foreground mt-2">
-              Changes recompute the report from the files you already
-              uploaded — no need to re-upload.
-            </p>
+            <SessionDetailsCard session={session} setSession={updateSessionDetails} />
           </div>
         )}
         <div className="mt-3 text-sm space-y-1">
@@ -1258,7 +1628,15 @@ function ReportView({
       </div>
 
       <div className="mb-6">
-        <ShowUpMergeTable rows={report.showUpMerge} />
+        <OptInTable rows={report.optIns} onUpdate={updateOptIn} onDelete={deleteOptIn} />
+      </div>
+
+      <div className="mb-6">
+        <ShowUpMergeTable
+          rows={report.showUpMerge}
+          onUpdate={updateShowUp}
+          onDelete={deleteShowUp}
+        />
       </div>
 
       <div className="mb-6">
@@ -1266,6 +1644,8 @@ function ReportView({
           rows={report.signUps}
           attendanceAtPitch={m.attendanceAtPitchEntered ?? null}
           showUpCount={m.showUpCount}
+          onUpdate={updateSignUp}
+          onDelete={deleteSignUp}
         />
       </div>
 
@@ -1293,21 +1673,13 @@ export default function Home() {
   });
   const [report, setReport] = useState<ReportData | null>(null);
   const [generating, setGenerating] = useState(false);
-  const [regenerating, setRegenerating] = useState(false);
   const [isDark, setIsDark] = useState(false);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const root = document.documentElement;
     if (isDark) root.classList.add("dark");
     else root.classList.remove("dark");
   }, [isDark]);
-
-  useEffect(() => {
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, []);
 
   const broadcasts = useMemo(
     () => (report ? buildBroadcasts(report) : null),
@@ -1348,37 +1720,6 @@ export default function Home() {
     } finally {
       setGenerating(false);
     }
-  }
-
-  // Edits made on the report page (VW dates, speaker, etc.) recompute the
-  // report from the already-uploaded files — no need to start over.
-  function handleSessionEdit(next: SessionDetails) {
-    setSession(next);
-    if (!report || !everwebinarFile || !tcFile) return;
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    setRegenerating(true);
-    debounceRef.current = setTimeout(async () => {
-      try {
-        const files: UploadedFiles = {
-          everwebinarFile,
-          thriveCartFile: tcFile,
-          oldStudentsFile,
-          bankTransferFile: btFile,
-          nlow4File,
-        };
-        const r = await generateReport(files, next);
-        setReport(r);
-      } catch (err: any) {
-        console.error(err);
-        toast({
-          title: "Failed to update report",
-          description: err?.message ?? "Unknown error",
-          variant: "destructive",
-        });
-      } finally {
-        setRegenerating(false);
-      }
-    }, 500);
   }
 
   function handleReset() {
@@ -1425,13 +1766,7 @@ export default function Home() {
         />
       )}
       {report && broadcasts && (
-        <ReportView
-          report={report}
-          broadcasts={broadcasts}
-          session={session}
-          onSessionChange={handleSessionEdit}
-          regenerating={regenerating}
-        />
+        <ReportView report={report} broadcasts={broadcasts} onReportChange={setReport} />
       )}
     </div>
   );
