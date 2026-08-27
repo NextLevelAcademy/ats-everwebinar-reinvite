@@ -459,6 +459,10 @@ export async function generateReport(
   for (const e of ew) {
     if (e.fullPhone) ewByPhone.set(e.fullPhone, e);
   }
+  const hasAttended = (email: string, fullPhone: string): boolean => {
+    if (email && ewByEmail.get(email)?.attendedLive) return true;
+    return !!fullPhone && !!ewByPhone.get(fullPhone)?.attendedLive;
+  };
 
   // ===== Sign-ups (TC + BT) =====
   const signUpRows: SignUpRow[] = [];
@@ -492,7 +496,7 @@ export async function generateReport(
   for (const r of tc) {
     const fullName = `${r.first} ${r.last}`.trim() || r.email;
     const resolved = resolvePhoneAndCountry(r.email, r.phone);
-    const showedUp = !!ewByEmail.get(r.email)?.attendedLive;
+    const showedUp = hasAttended(r.email, resolved.fullPhone);
     // Match Opt-In by email first, then by phone (same person, different
     // email between Opt-In and ThriveCart).
     const inOptIn =
@@ -538,7 +542,7 @@ export async function generateReport(
       continue;
     }
     const resolved = resolvePhoneAndCountry(r.email, r.phone);
-    const showedUp = !!(r.email && ewByEmail.get(r.email)?.attendedLive);
+    const showedUp = hasAttended(r.email, resolved.fullPhone);
     const inOptIn =
       (!!r.email && ewByEmail.has(r.email)) ||
       (!!resolved.fullPhone && ewByPhone.has(resolved.fullPhone));
@@ -565,6 +569,17 @@ export async function generateReport(
   const signUpEmails = new Set(
     signUpRows.map((s) => s.email).filter(Boolean)
   );
+  // Bank Transfer sign-ups often carry no email (or a different one than the
+  // person registered / showed up with) — match those by phone too, so a
+  // BT-paying attendee is still recognized as signed up.
+  const signUpPhones = new Set(
+    signUpRows.map((s) => (s.fullPhone || "").replace(/\D/g, "")).filter(Boolean)
+  );
+  const isSignedUp = (email: string, fullPhone: string): boolean => {
+    if (email && signUpEmails.has(email)) return true;
+    const p = (fullPhone || "").replace(/\D/g, "");
+    return !!p && signUpPhones.has(p);
+  };
 
   // ===== Show up Merge (one row per UNIQUE attendee email; sum durations) =====
   // Attendee data (name/phone/country) comes straight from the Everwebinar
@@ -582,7 +597,7 @@ export async function generateReport(
   }
   const showUpMerge: ShowUpMergeRow[] = Array.from(showUpMergeMap.values()).map(
     (e) => {
-      const signed = signUpEmails.has(e.email);
+      const signed = isSignedUp(e.email, e.fullPhone);
       return {
         fullName: e.fullName,
         email: e.email,
@@ -609,7 +624,7 @@ export async function generateReport(
     fullPhone: e.fullPhone,
     country: e.country,
     showedUp: e.attendedLive,
-    signedUp: signUpEmails.has(e.email),
+    signedUp: isSignedUp(e.email, e.fullPhone),
   }));
 
   // ===== Opt-Ins (every Everwebinar registrant) =====
@@ -622,7 +637,7 @@ export async function generateReport(
     fullPhone: e.fullPhone,
     country: e.country,
     showedUp: e.attendedLive,
-    signedUp: signUpEmails.has(e.email),
+    signedUp: isSignedUp(e.email, e.fullPhone),
   }));
   // Every attendee already has an Opt-In row from the same file, so nothing
   // is ever appended here — this app has no Keap source to fall back from.

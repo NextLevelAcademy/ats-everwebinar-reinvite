@@ -1330,11 +1330,11 @@ function WatiSection({
   broadcasts: ReturnType<typeof buildBroadcasts>;
 }) {
   const [tab, setTab] = useState<
-    "welcome" | "no_show_up"
+    "welcome" | "no_show_up" | "sales_follow_up"
   >("welcome");
 
   function tabBtn(
-    key: "welcome" | "no_show_up",
+    key: "welcome" | "no_show_up" | "sales_follow_up",
     label: string,
     count: number
   ) {
@@ -1386,6 +1386,11 @@ function WatiSection({
               "No Show Up",
               broadcasts.no_show_up.contacts.length
             )}
+            {tabBtn(
+              "sales_follow_up",
+              "Sales Follow Up",
+              broadcasts.sales_follow_up.contacts.length
+            )}
           </div>
           {tab === "welcome" && (
             <BroadcastPanel build={broadcasts.welcome} />
@@ -1404,6 +1409,9 @@ function WatiSection({
               )}
               <BroadcastPanel build={broadcasts.no_show_up} />
             </>
+          )}
+          {tab === "sales_follow_up" && (
+            <BroadcastPanel build={broadcasts.sales_follow_up} />
           )}
         </div>
       </div>
