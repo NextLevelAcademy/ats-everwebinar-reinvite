@@ -148,6 +148,7 @@ function parseEverwebinarRows(rows: Record<string, any>[]): EwRow[] {
         "Time in live room",
         "Time In Live Room",
       ]);
+      const durationMinutes = parseHmsToMinutes(durationRaw);
       return {
         first,
         last,
@@ -157,8 +158,11 @@ function parseEverwebinarRows(rows: Record<string, any>[]): EwRow[] {
         local,
         fullPhone: buildFullPhone(cc, local),
         country,
-        attendedLive: attendedRaw === "yes",
-        durationMinutes: parseHmsToMinutes(durationRaw),
+        // Require MORE than 10 minutes in the live room to count as a
+        // show-up — someone who joined and left within 10 minutes is
+        // treated as a no-show, even if Everwebinar marked them "Attended".
+        attendedLive: attendedRaw === "yes" && durationMinutes > 10,
+        durationMinutes,
       };
     })
     .filter((r) => r.email);
