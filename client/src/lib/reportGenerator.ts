@@ -158,10 +158,11 @@ function parseEverwebinarRows(rows: Record<string, any>[]): EwRow[] {
         local,
         fullPhone: buildFullPhone(cc, local),
         country,
-        // Require MORE than 10 minutes in the live room to count as a
-        // show-up — someone who joined and left within 10 minutes is
-        // treated as a no-show, even if Everwebinar marked them "Attended".
-        attendedLive: attendedRaw === "yes" && durationMinutes > 10,
+        // Require AT LEAST 10 minutes in the live room to count as a
+        // show-up — someone who joined and left within 9 minutes or less
+        // is treated as a no-show, even if Everwebinar marked them
+        // "Attended".
+        attendedLive: attendedRaw === "yes" && durationMinutes >= 10,
         durationMinutes,
       };
     })
