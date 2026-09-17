@@ -4,6 +4,7 @@ import type {
   OldStudentExclusionRow,
   ReportData,
   SessionDetails,
+  ShortDurationRow,
   ShowUpMergeRow,
   ShowUpRegRow,
   SignUpRow,
@@ -132,6 +133,9 @@ interface EwRow {
   country: CountryGroup;
   attendedLive: boolean;
   durationMinutes: number;
+  // True when Everwebinar marked them "Attended" but they stayed 9 minutes
+  // or less, so attendedLive above was flipped to false for them.
+  shortStay: boolean;
 }
 
 function parseEverwebinarRows(rows: Record<string, any>[]): EwRow[] {
@@ -164,6 +168,7 @@ function parseEverwebinarRows(rows: Record<string, any>[]): EwRow[] {
         // "Attended".
         attendedLive: attendedRaw === "yes" && durationMinutes >= 10,
         durationMinutes,
+        shortStay: attendedRaw === "yes" && durationMinutes < 10,
       };
     })
     .filter((r) => r.email);
@@ -445,6 +450,20 @@ export async function generateReport(
   };
 
   const ew = parseEverwebinarRows(ewRaw);
+  // Attendees Everwebinar marked "Attended" who stayed 9 minutes or less —
+  // excluded from Show Up above; kept here so it's visible who got
+  // filtered out and why.
+  const shortDurationNoShows: ShortDurationRow[] = ew
+    .filter((e) => e.shortStay)
+    .map((e) => ({
+      fullName: e.fullName,
+      email: e.email,
+      countryCode: e.cc,
+      phoneNumber: e.local,
+      fullPhone: e.fullPhone,
+      country: e.country,
+      durationMinutes: e.durationMinutes,
+    }));
   const tc = parseTCRows(tcRaw);
   const bt = parseBTRows(btRaw);
   // Tag 4 List (ATS4) — Keap CRM tag-list export, unrelated to Opt-In sourcing.
@@ -741,6 +760,7 @@ export async function generateReport(
     studentList,
     oldStudentsExcluded: oldStudentsExcludedList,
     oldStudentsShowUpRows,
+    shortDurationNoShows,
     generatedAt: new Date().toISOString(),
     nlow4ExcludedPhones,
     nlow4ExcludedEmails,

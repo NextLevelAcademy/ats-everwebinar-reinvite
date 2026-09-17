@@ -155,6 +155,21 @@ export interface OldStudentExclusionRow {
   foundIn: "Opt-In" | "Show Up" | "Opt-In + Show Up";
 }
 
+/**
+ * Row in the Short Duration No-Show tab — an attendee whose recorded time
+ * in the live room was 9 minutes or less, so they were excluded from Show
+ * Up even though Everwebinar marked them "Attended".
+ */
+export interface ShortDurationRow {
+  fullName: string;
+  email: string;
+  countryCode: string;
+  phoneNumber: string;
+  fullPhone: string;
+  country: CountryGroup;
+  durationMinutes: number;
+}
+
 export interface CountryBreakdown {
   SG: number;
   MY: number;
@@ -178,6 +193,9 @@ export interface ReportData {
   // the Keap Working export can still tag them with the show-up tag — even
   // though they remain excluded from the Opt-In / Show Up report tabs.
   oldStudentsShowUpRows: ShowUpMergeRow[];
+  // Attendees who joined but stayed 9 minutes or less — excluded from Show
+  // Up, listed here so it's visible who got filtered out and why.
+  shortDurationNoShows: ShortDurationRow[];
   generatedAt: string;
   // Tag 4 List exclusion (ATS4) — contacts in the uploaded Tag 4 CSV are
   // filtered out of the No Show Up broadcast. Match by normalized phone
