@@ -637,6 +637,41 @@ export async function generateReport(
     }
   );
 
+  // Sign-ups (TC/BT) who paid but the Everwebinar file never marked them
+  // "Attended" are auto-added to Show Up Merge — paying during/after the
+  // pitch means they clearly attended, even if Everwebinar's own tracking
+  // missed it. Matched by email first, then phone, to avoid double-adding
+  // the same person under two different sign-up rows.
+  let signUpAddedToShowUpCount = 0;
+  const showUpEmails = new Set(
+    showUpMerge.map((r) => r.email.toLowerCase()).filter(Boolean)
+  );
+  const showUpPhones = new Set(
+    showUpMerge.map((r) => (r.fullPhone || "").replace(/\D/g, "")).filter(Boolean)
+  );
+  for (const s of signUpRows) {
+    if (s.showedUp) continue;
+    const emailKey = (s.email || "").toLowerCase();
+    const phoneKey = (s.fullPhone || "").replace(/\D/g, "");
+    if (emailKey && showUpEmails.has(emailKey)) continue;
+    if (phoneKey && showUpPhones.has(phoneKey)) continue;
+    signUpAddedToShowUpCount++;
+    showUpMerge.push({
+      fullName: s.fullName,
+      email: s.email,
+      countryCode: s.countryCode,
+      phoneNumber: s.phoneNumber,
+      fullPhone: s.fullPhone,
+      country: s.country,
+      durationMinutes: 0,
+      source: "Sign Up",
+      signedUp: true,
+      signedUpEmail: s.email,
+    });
+    if (emailKey) showUpEmails.add(emailKey);
+    if (phoneKey) showUpPhones.add(phoneKey);
+  }
+
   // ===== Show up REG (one row per registrant) =====
   const showUpReg: ShowUpRegRow[] = ew.map((e) => ({
     firstName: e.first,
@@ -663,9 +698,42 @@ export async function generateReport(
     showedUp: e.attendedLive,
     signedUp: isSignedUp(e.email, e.fullPhone),
   }));
-  // Every attendee already has an Opt-In row from the same file, so nothing
-  // is ever appended here — this app has no Keap source to fall back from.
-  const showUpAddedToOptInCount = 0;
+  // A registrant whose sign-up got auto-added to Show Up above (paid but
+  // not marked "Attended") still shows showedUp: false here otherwise,
+  // since that field was set from the raw Everwebinar record — sync it up.
+  const showUpMergeEmails = new Set(
+    showUpMerge.map((r) => r.email.toLowerCase()).filter(Boolean)
+  );
+  for (const r of optInRows) {
+    if (!r.showedUp && r.email && showUpMergeEmails.has(r.email.toLowerCase())) {
+      r.showedUp = true;
+    }
+  }
+  // Sign-ups with no Everwebinar record at all (auto-added to Show Up
+  // above) have no Opt-In row either, since this app's Opt-In list is just
+  // the Everwebinar file itself — add them here too.
+  let showUpAddedToOptInCount = 0;
+  const optInEmails = new Set(
+    optInRows.map((r) => (r.email || "").toLowerCase()).filter(Boolean)
+  );
+  for (const s of showUpMerge) {
+    if (s.source !== "Sign Up") continue;
+    const emailKey = (s.email || "").toLowerCase();
+    if (emailKey && optInEmails.has(emailKey)) continue;
+    showUpAddedToOptInCount++;
+    optInRows.push({
+      firstName: s.fullName,
+      fullName: s.fullName,
+      email: s.email,
+      countryCode: s.countryCode,
+      phoneNumber: s.phoneNumber,
+      fullPhone: s.fullPhone,
+      country: s.country,
+      showedUp: true,
+      signedUp: s.signedUp,
+    });
+    if (emailKey) optInEmails.add(emailKey);
+  }
 
   // ===== Old ATS Students exclusion =====
   // Match by email only (case-insensitive). Excluded from Opt-In + Show Up
@@ -745,6 +813,7 @@ export async function generateReport(
       oldStudentsShowUpOptInCount,
       oldStudentsShowUpCount,
       showUpAddedToOptInCount,
+      signUpAddedToShowUpCount,
     });
 
   return {

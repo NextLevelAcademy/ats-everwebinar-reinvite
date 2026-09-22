@@ -54,6 +54,7 @@ export interface DeriveMetricsPassthrough {
   oldStudentsShowUpOptInCount: number;
   oldStudentsShowUpCount: number;
   showUpAddedToOptInCount: number;
+  signUpAddedToShowUpCount: number;
 }
 
 export interface DerivedReportSlice {
@@ -136,6 +137,7 @@ export function deriveMetrics(
     oldStudentsShowUpOptInCount: passthrough.oldStudentsShowUpOptInCount,
     oldStudentsShowUpCount: passthrough.oldStudentsShowUpCount,
     showUpAddedToOptInCount: passthrough.showUpAddedToOptInCount,
+    signUpAddedToShowUpCount: passthrough.signUpAddedToShowUpCount,
   };
 
   const previewDate = formatSessionDateLong(session.sessionDate, 0);

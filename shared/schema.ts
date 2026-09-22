@@ -67,7 +67,8 @@ export interface PreviewMetrics {
   oldStudentsExcludedCount: number; // # of Old ATS Students filtered out of Opt-In + Show Up
   oldStudentsShowUpOptInCount: number; // # of Old Students who both showed up and were in Opt-In (pre-exclusion)
   oldStudentsShowUpCount: number; // # of Old Students who appeared in Show Up — subtracted from Attendance at Pitch
-  showUpAddedToOptInCount: number; // always 0 — this app has no Keap source to fall back from
+  showUpAddedToOptInCount: number; // # of sign-ups with no Everwebinar record at all, auto-added to Opt-In alongside Show Up
+  signUpAddedToShowUpCount: number; // # of sign-ups auto-added to Show Up (paid but not marked "Attended" in Everwebinar)
 }
 
 export interface OptInRow {
@@ -91,7 +92,7 @@ export interface ShowUpMergeRow {
   fullPhone: string;
   country: CountryGroup;
   durationMinutes: number;
-  source: "Everwebinar";
+  source: "Everwebinar" | "Sign Up";
   signedUp: boolean;
   signedUpEmail: string; // for the "Sign up" column display
 }

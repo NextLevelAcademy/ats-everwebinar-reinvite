@@ -927,7 +927,7 @@ function OptInTable({
   );
 }
 
-const SHOW_UP_SOURCE_OPTIONS: ShowUpMergeRow["source"][] = ["Everwebinar"];
+const SHOW_UP_SOURCE_OPTIONS: ShowUpMergeRow["source"][] = ["Everwebinar", "Sign Up"];
 
 function ShowUpMergeTable({
   rows,
@@ -1451,6 +1451,7 @@ function ReportView({
       oldStudentsShowUpOptInCount: m.oldStudentsShowUpOptInCount,
       oldStudentsShowUpCount: m.oldStudentsShowUpCount,
       showUpAddedToOptInCount: m.showUpAddedToOptInCount,
+      signUpAddedToShowUpCount: m.signUpAddedToShowUpCount,
     });
     onReportChange({
       ...report,
@@ -1537,7 +1538,12 @@ function ReportView({
           )}
           {m.showUpAddedToOptInCount > 0 && (
             <p className="text-blue-600 dark:text-blue-400">
-              {m.showUpAddedToOptInCount} show-up attendees auto-added to Opt-In list (manually invited)
+              {m.showUpAddedToOptInCount} sign-ups with no Everwebinar record auto-added to Opt-In
+            </p>
+          )}
+          {m.signUpAddedToShowUpCount > 0 && (
+            <p className="text-blue-600 dark:text-blue-400">
+              {m.signUpAddedToShowUpCount} sign-ups auto-added to Show Up (paid but not marked "Attended")
             </p>
           )}
           {sessionLong && (
