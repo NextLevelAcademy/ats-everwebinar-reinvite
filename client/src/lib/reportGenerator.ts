@@ -766,8 +766,6 @@ export async function generateReport(
       }
     }
   }
-  const optInRowsBeforeExclusion = optInRows.length;
-  const showUpMergeBeforeExclusion = showUpMerge.length;
   // Capture matched rows by email so we can render them in the "Old Students" tab.
   const excludedFromOptInByEmail = new Map<string, OptInRow>();
   for (const r of optInRows) {
@@ -807,9 +805,10 @@ export async function generateReport(
   const oldStudentsShowUpRows = showUpMerge.filter((r) => isOldStudent(r.email));
   const optInRowsFiltered = optInRows.filter((r) => !isOldStudent(r.email));
   const showUpMergeFiltered = showUpMerge.filter((r) => !isOldStudent(r.email));
-  const oldStudentsExcludedCount =
-    (optInRowsBeforeExclusion - optInRowsFiltered.length) +
-    (showUpMergeBeforeExclusion - showUpMergeFiltered.length);
+  // Unique old students excluded (matches the Old Students tab's row count) —
+  // not a sum of list removals, which would double-count anyone found in
+  // both Opt-In and Show Up.
+  const oldStudentsExcludedCount = oldStudentsExcludedList.length;
   // Replace mutable lists with filtered versions for all downstream metrics.
   optInRows.length = 0;
   optInRows.push(...optInRowsFiltered);
