@@ -4,7 +4,6 @@ import type {
   OldStudentExclusionRow,
   ReportData,
   SessionDetails,
-  ShortDurationRow,
   ShowUpMergeRow,
   ShowUpRegRow,
   SignUpRow,
@@ -143,9 +142,6 @@ interface EwRow {
   country: CountryGroup;
   attendedLive: boolean;
   durationMinutes: number;
-  // True when Everwebinar marked them "Attended" but they stayed 9 minutes
-  // or less, so attendedLive above was flipped to false for them.
-  shortStay: boolean;
 }
 
 function parseEverwebinarRows(rows: Record<string, any>[]): EwRow[] {
@@ -172,13 +168,10 @@ function parseEverwebinarRows(rows: Record<string, any>[]): EwRow[] {
         local,
         fullPhone: buildFullPhone(cc, local),
         country,
-        // Require AT LEAST 10 minutes in the live room to count as a
-        // show-up — someone who joined and left within 9 minutes or less
-        // is treated as a no-show, even if Everwebinar marked them
-        // "Attended".
-        attendedLive: attendedRaw === "yes" && durationMinutes >= 10,
+        // Everyone marked "Attended" counts as a show-up, regardless of
+        // how long they stayed in the live room.
+        attendedLive: attendedRaw === "yes",
         durationMinutes,
-        shortStay: attendedRaw === "yes" && durationMinutes < 10,
       };
     })
     .filter((r) => r.email);
@@ -460,20 +453,6 @@ export async function generateReport(
   };
 
   const ew = parseEverwebinarRows(ewRaw);
-  // Attendees Everwebinar marked "Attended" who stayed 9 minutes or less —
-  // excluded from Show Up above; kept here so it's visible who got
-  // filtered out and why.
-  const shortDurationNoShows: ShortDurationRow[] = ew
-    .filter((e) => e.shortStay)
-    .map((e) => ({
-      fullName: e.fullName,
-      email: e.email,
-      countryCode: e.cc,
-      phoneNumber: e.local,
-      fullPhone: e.fullPhone,
-      country: e.country,
-      durationMinutes: e.durationMinutes,
-    }));
   const tc = parseTCRows(tcRaw);
   const bt = parseBTRows(btRaw);
   // Tag 4 List (ATS4) — Keap CRM tag-list export, unrelated to Opt-In sourcing.
@@ -838,7 +817,6 @@ export async function generateReport(
     studentList,
     oldStudentsExcluded: oldStudentsExcludedList,
     oldStudentsShowUpRows,
-    shortDurationNoShows,
     generatedAt: new Date().toISOString(),
     nlow4ExcludedPhones,
     nlow4ExcludedEmails,
